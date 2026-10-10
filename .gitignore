@@ -1,0 +1,18 @@
+# Archivos compilados de Maven
+target/
+*.class
+
+# Basura de macOS
+__MACOSX/
+.DS_Store
+
+# Carpetas que venian en el zip y no son parte del proyecto
+/~/
+.github/modernize/
+
+# Registros
+*.log
+
+# IntelliJ IDEA
+.idea/
+*.iml

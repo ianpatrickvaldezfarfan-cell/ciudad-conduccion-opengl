@@ -1,0 +1,123 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!-- Identificacion del proyecto -->
+  <groupId>com.graphics</groupId>
+  <artifactId>opengl-java-class</artifactId>
+  <packaging>jar</packaging>
+  <version>1.0-SNAPSHOT</version>
+
+  <name>opengl-java-class</name>
+  <url>http://maven.apache.org</url>
+
+  <!--
+    Propiedades que se reutilizan en el POM
+    Aqui definir la version de Java, LWJGL
+   -->
+  <properties>
+    <!-- Bytecode Java 17: compila con cualquier JDK 17 o superior (incluido JDK 25) -->
+    <maven.compiler.release>17</maven.compiler.release>
+    <!-- Los comentarios usan tildes: leer y escribir los .java siempre en UTF-8 -->
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- 3.3.6 para que sea compatible con Java 21/25 (3.3.3 da aviso de JNI) -->
+    <lwjgl.version>3.3.6</lwjgl.version>
+    <!--
+      Clase que contiene el public static void main que ejecuta "mvn exec:exec".
+      Otras clases: mvn exec:exec -DmainClass=com.graphics.AppCiudad
+    -->
+    <mainClass>com.graphics.AppConduccion</mainClass>
+  </properties>
+
+  <!-- Bibliotecas que el proyecto necesita para compilar y ejecutar -->
+  <dependencies>
+    <!-- JUnit: biblioteca para escribir pruebas unitarias (solo src/test) -->
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>3.8.1</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!--
+      LWJGL: Son los binding de Java para OpenGL y GLFW
+      Tres modulos principales:
+        - lwjgl -> Es el nucleo para la carga de la biblioteca nativa
+        - lwjgl-glfw -> Crear ventana, teclado, raton
+        - lwjgl-opengl -> llamadas a OpenGL
+    -->
+    <dependency>
+      <groupId>org.lwjgl</groupId>
+      <artifactId>lwjgl</artifactId>
+      <version>${lwjgl.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.lwjgl</groupId>
+      <artifactId>lwjgl-glfw</artifactId>
+      <version>${lwjgl.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.lwjgl</groupId>
+      <artifactId>lwjgl-opengl</artifactId>
+      <version>${lwjgl.version}</version>
+    </dependency>
+
+    <!-- Bibliotecas nativas para WINDOWS (64 bits). No se incluyen las de macOS. -->
+    <dependency>
+      <groupId>org.lwjgl</groupId>
+      <artifactId>lwjgl</artifactId>
+      <version>${lwjgl.version}</version>
+      <classifier>natives-windows</classifier>
+    </dependency>
+    <dependency>
+      <groupId>org.lwjgl</groupId>
+      <artifactId>lwjgl-glfw</artifactId>
+      <version>${lwjgl.version}</version>
+      <classifier>natives-windows</classifier>
+    </dependency>
+    <dependency>
+      <groupId>org.lwjgl</groupId>
+      <artifactId>lwjgl-opengl</artifactId>
+      <version>${lwjgl.version}</version>
+      <classifier>natives-windows</classifier>
+    </dependency>
+  </dependencies>
+
+  <!--
+    BUILD = como compilar y que plugins usar
+   -->
+  <build>
+    <plugins>
+      <!-- Compila para Java 17 aunque el JDK instalado sea mas nuevo (25) -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <release>17</release>
+        </configuration>
+      </plugin>
+
+      <!--
+        exec-maven-plugin: permite ejecutar la aplicacion con "mvn exec:exec"
+       -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.1.0</version>
+        <configuration>
+          <!-- Usa el mismo JDK con el que corre Maven -->
+          <executable>${java.home}/bin/java</executable>
+          <arguments>
+            <!-- -XstartOnFirstThread solo existe en MAC; en Windows no se usa -->
+            <!-- Permite a LWJGL cargar las DLL nativas sin advertencias (Java 22+) -->
+            <argument>--enable-native-access=ALL-UNNAMED</argument>
+            <argument>-classpath</argument>
+            <classpath/>
+            <argument>${mainClass}</argument>
+          </arguments>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
