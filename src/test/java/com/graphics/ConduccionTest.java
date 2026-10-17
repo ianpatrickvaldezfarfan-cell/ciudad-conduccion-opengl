@@ -5,7 +5,9 @@ import java.util.List;
 
 import com.graphics.juego.ciudad.MapaCiudad;
 import com.graphics.juego.conduccion.Auto;
+import com.graphics.juego.conduccion.Chata;
 import com.graphics.juego.conduccion.ControlesAuto;
+import com.graphics.juego.conduccion.Obstaculos;
 import com.graphics.juego.funciones.Entregas;
 import com.graphics.juego.funciones.Semaforos;
 import com.graphics.juego.trafico.Trafico;
@@ -192,5 +194,155 @@ public class ConduccionTest extends TestCase {
         assertEquals(salida[1], auto.z, 0f);
         assertEquals(0f, auto.velocidad, 0f);
         assertEquals(salida[2], auto.angulo, 0f);
+    }
+
+    // ===================== Chata (remolque) =====================
+
+    private static final Obstaculos SIN_OBSTACULOS = (xa, za, x, z) -> true;
+
+    /** Avanza el conjunto auto + chata "segundos" segundos con los mismos controles. */
+    private static void conducir(Auto auto, Chata chata, float dt, float segundos, ControlesAuto c,
+            Obstaculos paraAuto, Obstaculos paraChata) {
+        int pasos = Math.round(segundos / dt);
+        for (int i = 0; i < pasos; i++) {
+            chata.conducir(dt, auto, c, paraAuto, paraChata);
+        }
+    }
+
+    /** La lanza siempre queda pegada al enganche: el eje esta a LANZA del enganche. */
+    private static void assertLanzaPegada(Auto auto, Chata chata) {
+        float[] p = Chata.enganche(auto.x, auto.z, auto.angulo);
+        assertEquals(Chata.LANZA, (float) Math.hypot(chata.ejeX - p[0], chata.ejeZ - p[1]), 1e-3f);
+    }
+
+    /** En recta la chata queda alineada justo detras del auto; detenida no gira. */
+    public void testChataSeAlineaEnRecta() {
+        Auto auto = new Auto(0, 0, 0);
+        Chata chata = new Chata(auto);
+        float dt = 1 / 60f;
+        // Detenido: la chata no gira
+        conducir(auto, chata, dt, 2, ControlesAuto.NINGUNO, SIN_OBSTACULOS, SIN_OBSTACULOS);
+        assertEquals(0f, chata.angulo, 1e-6f);
+        // Curva para desalinearla y despues recta
+        conducir(auto, chata, dt, 1.5f, new ControlesAuto(1, 1, false), SIN_OBSTACULOS, SIN_OBSTACULOS);
+        assertTrue(Math.abs(chata.anguloRelativo(auto)) > 0.1f);
+        conducir(auto, chata, dt, 6, new ControlesAuto(1, 0, false), SIN_OBSTACULOS, SIN_OBSTACULOS);
+        assertEquals(0f, chata.anguloRelativo(auto), 0.01f);
+        // El eje queda detras del auto a ENGANCHE + LANZA
+        float distancia = Chata.ENGANCHE + Chata.LANZA;
+        assertEquals(auto.x - auto.frenteX() * distancia, chata.ejeX, 0.05f);
+        assertEquals(auto.z - auto.frenteZ() * distancia, chata.ejeZ, 0.05f);
+        assertLanzaPegada(auto, chata);
+    }
+
+    /** Al girar la chata se queda atras (se abre hacia afuera) y luego converge. */
+    public void testChataSeQuedaAtrasAlGirarYConverge() {
+        Auto auto = new Auto(0, 0, 0);
+        Chata chata = new Chata(auto);
+        float dt = 1 / 60f;
+        conducir(auto, chata, dt, 1, new ControlesAuto(1, 0, false), SIN_OBSTACULOS, SIN_OBSTACULOS);
+        float maximo = 0;
+        for (int i = 0; i < 90; i++) { // 1.5 s girando a la izquierda (el angulo del auto aumenta)
+            chata.conducir(dt, auto, new ControlesAuto(1, 1, false), SIN_OBSTACULOS, SIN_OBSTACULOS);
+            float relativo = chata.anguloRelativo(auto);
+            assertTrue("la chata debe ir detras del giro del auto", relativo >= 0);
+            maximo = Math.max(maximo, relativo);
+            assertLanzaPegada(auto, chata);
+        }
+        assertTrue("la chata casi no se abrio: " + maximo, maximo > 0.15f);
+        conducir(auto, chata, dt, 8, new ControlesAuto(1, 0, false), SIN_OBSTACULOS, SIN_OBSTACULOS);
+        assertEquals(0f, chata.anguloRelativo(auto), 0.01f);
+    }
+
+    /** El angulo relativo nunca supera el limite, tampoco en reversa (acuchillamiento). */
+    public void testAnguloRelativoLimitado() {
+        Auto auto = new Auto(0, 0, 0);
+        Chata chata = new Chata(auto);
+        float dt = 1 / 60f;
+        float limite = Chata.ANGULO_MAXIMO + 1e-4f;
+        float maximoReversa = 0;
+        ControlesAuto[] maniobras = {
+                new ControlesAuto(1, 1, false),   // adelante girando
+                new ControlesAuto(-1, 1, false),  // reversa girando
+                new ControlesAuto(-1, -1, false), // reversa al otro lado
+                new ControlesAuto(-1, 0, false)   // reversa recta: el remolque se cierra solo
+        };
+        for (ControlesAuto c : maniobras) {
+            for (int i = 0; i < 60 * 6; i++) {
+                chata.conducir(dt, auto, c, SIN_OBSTACULOS, SIN_OBSTACULOS);
+                float relativo = Math.abs(chata.anguloRelativo(auto));
+                assertTrue("angulo relativo " + relativo, relativo <= limite);
+                if (c.acelerador() < 0) {
+                    maximoReversa = Math.max(maximoReversa, relativo);
+                }
+                assertLanzaPegada(auto, chata);
+            }
+        }
+        // En reversa la chata se acuchilla hasta el tope
+        assertEquals(Chata.ANGULO_MAXIMO, maximoReversa, 0.01f);
+    }
+
+    /** El mismo recorrido a 30 y a 144 FPS deja la chata en el mismo lugar y angulo. */
+    public void testChataIndependienteDeLosFps() {
+        float[] lento = recorridoChata(1 / 30f);
+        float[] rapido = recorridoChata(1 / 144f);
+        assertEquals(lento[0], rapido[0], 0.6f);
+        assertEquals(lento[1], rapido[1], 0.6f);
+        assertEquals(lento[2], rapido[2], 0.05f);
+    }
+
+    private float[] recorridoChata(float dt) {
+        Auto auto = new Auto(0, 0, 0);
+        Chata chata = new Chata(auto);
+        conducir(auto, chata, dt, 1.5f, new ControlesAuto(1, 0, false), SIN_OBSTACULOS, SIN_OBSTACULOS);
+        conducir(auto, chata, dt, 1.5f, new ControlesAuto(1, 1, false), SIN_OBSTACULOS, SIN_OBSTACULOS);
+        conducir(auto, chata, dt, 1.0f, new ControlesAuto(0, -1, true), SIN_OBSTACULOS, SIN_OBSTACULOS);
+        conducir(auto, chata, dt, 1.0f, new ControlesAuto(-1, 1, false), SIN_OBSTACULOS, SIN_OBSTACULOS);
+        return new float[] { chata.ejeX, chata.ejeZ, chata.angulo };
+    }
+
+    /** Maniobrar contra manzanas nunca deja la chata (ni el auto) dentro de una manzana. */
+    public void testChataNoAtraviesaManzanas() {
+        Obstaculos paraAuto = (xa, za, x, z) -> mapa.puedeCircular(x, z, Auto.RADIO);
+        Obstaculos paraChata = (xa, za, x, z) -> mapa.puedeCircular(x, z, Chata.RADIO);
+        // Calle vertical en x = -30, mirando al este hacia una manzana; parque al oeste
+        Auto auto = new Auto(-30, -20, (float) (-Math.PI / 2));
+        Chata chata = new Chata(auto);
+        assertTrue(Chata.cabe(chata.estado(), chata.estado(), paraChata));
+        ControlesAuto[] maniobras = {
+                new ControlesAuto(1, 1, false), new ControlesAuto(-1, -1, false),
+                new ControlesAuto(1, -1, false), new ControlesAuto(-1, 1, false),
+                new ControlesAuto(-1, 0, false), new ControlesAuto(1, 0, false)
+        };
+        float dt = 1 / 60f;
+        for (ControlesAuto c : maniobras) {
+            for (int i = 0; i < 60 * 4; i++) {
+                chata.conducir(dt, auto, c, paraAuto, paraChata);
+                assertTrue(mapa.puedeCircular(auto.x, auto.z, Auto.RADIO));
+                float[] circulos = chata.estado().circulos();
+                assertTrue("chata dentro de una manzana en " + circulos[0] + "," + circulos[1],
+                        mapa.puedeCircular(circulos[0], circulos[1], Chata.RADIO));
+                assertTrue("chata dentro de una manzana en " + circulos[2] + "," + circulos[3],
+                        mapa.puedeCircular(circulos[2], circulos[3], Chata.RADIO));
+                assertLanzaPegada(auto, chata);
+            }
+        }
+    }
+
+    /** R: el auto vuelve a la salida y la chata queda recta detras de el. */
+    public void testReinicioAlineaChata() {
+        float[] salida = mapa.salida();
+        Auto auto = new Auto(salida[0], salida[1], salida[2]);
+        Chata chata = new Chata(auto);
+        conducir(auto, chata, 1 / 60f, 2, new ControlesAuto(1, 1, false), SIN_OBSTACULOS, SIN_OBSTACULOS);
+        auto.reiniciar();
+        chata.alinear(auto);
+        assertEquals(salida[2], chata.angulo, 1e-6f);
+        float distancia = Chata.ENGANCHE + Chata.LANZA;
+        assertEquals(salida[0] - auto.frenteX() * distancia, chata.ejeX, 1e-4f);
+        assertEquals(salida[1] - auto.frenteZ() * distancia, chata.ejeZ, 1e-4f);
+        float[] circulos = chata.estado().circulos();
+        assertTrue(mapa.puedeCircular(circulos[0], circulos[1], Chata.RADIO));
+        assertTrue(mapa.puedeCircular(circulos[2], circulos[3], Chata.RADIO));
     }
 }

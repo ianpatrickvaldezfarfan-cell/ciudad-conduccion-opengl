@@ -18,9 +18,11 @@ import com.graphics.juego.ciudad.DibujoCiudad;
 import com.graphics.juego.ciudad.Letreros;
 import com.graphics.juego.ciudad.MapaCiudad;
 import com.graphics.juego.conduccion.Auto;
+import com.graphics.juego.conduccion.Chata;
 import com.graphics.juego.conduccion.Camara;
 import com.graphics.juego.conduccion.ControlesAuto;
 import com.graphics.juego.conduccion.ModeloAuto;
+import com.graphics.juego.conduccion.ModeloChata;
 import com.graphics.juego.funciones.Entregas;
 import com.graphics.juego.funciones.Hud;
 import com.graphics.juego.funciones.Minimapa;
@@ -38,7 +40,7 @@ import com.graphics.juego.trafico.Trafico;
  * Cada responsabilidad vive en su propio paquete dentro de com.graphics.juego:
  *   motor        -> shaders, cubo, matrices, fuente de pixeles
  *   ciudad       -> mapa (matriz de celdas), dibujo de la ciudad y decoracion, letreros
- *   conduccion   -> auto, fisica, colisiones, modelo 3D, camara
+ *   conduccion   -> auto, chata (remolque), fisica, colisiones, modelos 3D, camara
  *   iluminacion  -> dia/noche, farolas, faros
  *   funciones    -> entregas, semaforos, minimapa, HUD
  *   trafico      -> vehiculos autonomos
@@ -53,6 +55,7 @@ import com.graphics.juego.trafico.Trafico;
  *   -Ddemo.pausa=true      inicia en pausa
  *   -Ddemo.ganar=true      completa todas las entregas al iniciar (pantalla de victoria)
  *   -Ddemo.redimensionar=WxH  cambia el tamano de la ventana en el cuadro 30
+ *   -Ddemo.chataAngulo=rad abre la chata ese angulo respecto al auto (para revisar el modelo)
  */
 public class AppConduccion {
 
@@ -68,12 +71,14 @@ public class AppConduccion {
     // Estado del juego
     private final MapaCiudad mapa = new MapaCiudad();
     private final Auto auto;
+    private final Chata chata;
     private final Camara camara = new Camara();
     private final Entregas entregas = new Entregas(mapa);
     private final Semaforos semaforos = new Semaforos(mapa);
     private final Trafico trafico = new Trafico(mapa, VEHICULOS_AUTONOMOS);
     private final Iluminacion iluminacion = new Iluminacion(mapa);
     private boolean pausado;
+    private float avisoSinEspacio; // segundos que se muestra "no hay espacio para la chata"
 
     // Dibujo
     private final Renderizador renderizador = new Renderizador();
@@ -88,6 +93,7 @@ public class AppConduccion {
     public AppConduccion() {
         float[] salida = mapa.salida();
         auto = new Auto(salida[0], salida[1], salida[2]);
+        chata = new Chata(auto); // por defecto enganchada y alineada detras del auto
     }
 
     public void run() {
@@ -191,6 +197,14 @@ public class AppConduccion {
             auto.z = Float.parseFloat(partes[1]);
             auto.angulo = Float.parseFloat(partes[2]);
         }
+        chata.alinear(auto);
+        String abrir = System.getProperty("demo.chataAngulo");
+        if (abrir != null) {
+            float[] p = Chata.enganche(auto.x, auto.z, auto.angulo);
+            chata.angulo = auto.angulo - Float.parseFloat(abrir);
+            chata.ejeX = p[0] + (float) Math.sin(chata.angulo) * Chata.LANZA;
+            chata.ejeZ = p[1] + (float) Math.cos(chata.angulo) * Chata.LANZA;
+        }
     }
 
     // ===================== Teclado =====================
@@ -206,8 +220,22 @@ public class AppConduccion {
             case GLFW_KEY_R -> reiniciar();
             case GLFW_KEY_H -> panel.alternarAyuda();
             case GLFW_KEY_P -> pausado = !pausado;
+            case GLFW_KEY_T -> alternarChata();
             default -> {
             }
+        }
+    }
+
+    /** Tecla T: suelta la chata o la engancha alineada detras del auto (si hay espacio). */
+    private void alternarChata() {
+        if (chata.enganchada()) {
+            chata.desenganchar();
+            return;
+        }
+        chata.enganchar(auto);
+        if (!Chata.cabe(chata.estado(), chata.estado(), this::libreChata)) {
+            chata.desenganchar(); // quedaria dentro de una manzana o de otro auto
+            avisoSinEspacio = 2.5f;
         }
     }
 
@@ -241,6 +269,7 @@ public class AppConduccion {
      */
     private void reiniciar() {
         auto.reiniciar();
+        chata.alinear(auto); // vuelve recta detras del auto en la salida
         entregas.reiniciar();
         trafico.reiniciar();
         semaforos.reiniciar();
@@ -284,17 +313,24 @@ public class AppConduccion {
 
     /** Toda la simulacion avanza con deltaTime: nada depende de los FPS. */
     private void actualizar(float deltaTime) {
-        auto.actualizar(deltaTime, leerControles(), this::libre);
+        // El auto arrastra a la chata: ningun movimiento se acepta si la chata chocaria
+        chata.conducir(deltaTime, auto, leerControles(), this::libre, this::libreChata);
+        avisoSinEspacio = Math.max(0, avisoSinEspacio - deltaTime);
         entregas.actualizar(deltaTime, auto);
         semaforos.actualizar(deltaTime);
-        trafico.actualizar(deltaTime, semaforos, auto);
+        trafico.actualizar(deltaTime, semaforos, auto, chata.enganchada() ? chata.estado().circulos() : new float[0]);
         float orbita = (pulsada(GLFW_KEY_E) ? 1 : 0) - (pulsada(GLFW_KEY_Q) ? 1 : 0);
-        camara.actualizar(deltaTime, auto, mapa, orbita);
+        camara.actualizar(deltaTime, auto, mapa, orbita, chata.enganchada());
     }
 
     /** Colisiones del jugador: manzanas y bordes del mapa, y vehiculos autonomos. */
     private boolean libre(float xAntes, float zAntes, float x, float z) {
         return mapa.puedeCircular(x, z, Auto.RADIO) && trafico.libre(xAntes, zAntes, x, z);
+    }
+
+    /** Colisiones de cada circulo de la chata: misma logica que el auto, con su radio. */
+    private boolean libreChata(float xAntes, float zAntes, float x, float z) {
+        return mapa.puedeCircular(x, z, Chata.RADIO) && trafico.libre(xAntes, zAntes, x, z, Chata.RADIO);
     }
 
     // ===================== Dibujo =====================
@@ -319,6 +355,10 @@ public class AppConduccion {
         entregas.dibujar(renderizador);
         trafico.dibujar(renderizador, noche);
         ModeloAuto.dibujar(renderizador, auto.x, auto.z, auto.angulo, COLOR_JUGADOR, noche, iluminacion.faros());
+        if (chata.enganchada()) {
+            ModeloChata.dibujarEnganche(renderizador, auto);
+            ModeloChata.dibujar(renderizador, chata, noche);
+        }
 
         // 2) Minimapa: su propio viewport y proyeccion ortografica (restaura el estado al terminar)
         minimapa.dibujar(renderizador, ancho, alto, (r, escala) -> {
@@ -339,6 +379,14 @@ public class AppConduccion {
     /** Flecha cian (posicion y orientacion del jugador) con punta blanca hacia su frente. */
     private void dibujarFlechaJugador(Renderizador r, float escala) {
         float e = escala * 2.2f;
+        if (chata.enganchada()) {
+            // Rectangulo naranja detras de la flecha, con el angulo propio de la chata
+            float atrasX = auto.x - auto.frenteX() * 1.8f * e;
+            float atrasZ = auto.z - auto.frenteZ() * 1.8f * e;
+            float chataX = atrasX + (float) Math.sin(chata.angulo) * 1.4f * e;
+            float chataZ = atrasZ + (float) Math.cos(chata.angulo) * 1.4f * e;
+            r.cajaGirada(chataX, 39, chataZ, 1.7f * e, 0.1f, 2.0f * e, 1, 0.5f, 0.15f, chata.angulo);
+        }
         r.cajaGirada(auto.x, 40, auto.z, 2.4f * e, 0.1f, 3.6f * e, 0.1f, 0.95f, 1, auto.angulo);
         float puntaX = auto.x + auto.frenteX() * 2.6f * e;
         float puntaZ = auto.z + auto.frenteZ() * 2.6f * e;
@@ -353,7 +401,8 @@ public class AppConduccion {
                 entregas.completadas(), entregas.total(), entregas.nombreActivo(),
                 Math.round(entregas.distancia(auto)), entregas.rumbo(auto), entregas.tiempo(),
                 entregas.terminado(), entregas.mostrandoAviso(),
-                minimapa.visible(), minimapa.recuadro(ancho, alto), trafico.vehiculos().size());
+                minimapa.visible(), minimapa.recuadro(ancho, alto), trafico.vehiculos().size(),
+                chata.enganchada(), avisoSinEspacio > 0);
     }
 
     // ===================== Indicador basico en el titulo de la ventana =====================
@@ -372,6 +421,7 @@ public class AppConduccion {
         t.append(" | ").append(iluminacion.noche() ? "Noche" : "Dia");
         t.append(" | Faros ").append(iluminacion.faros() ? "ON" : "OFF");
         t.append(" | Camara: ").append(camara.modo().nombre);
+        t.append(" | Chata ").append(chata.enganchada() ? "SI" : "NO");
         if (entregas.terminado()) {
             t.append(" | GANASTE en ").append((int) entregas.tiempo()).append(" s! R: jugar otra vez");
         } else {

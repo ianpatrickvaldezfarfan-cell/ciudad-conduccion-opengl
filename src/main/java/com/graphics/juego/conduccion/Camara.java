@@ -46,15 +46,21 @@ public class Camara {
         return ojo;
     }
 
-    /** @param giroOrbita -1, 0 o +1 segun Q/E (solo afecta a la panoramica) */
-    public void actualizar(float deltaTime, Auto auto, MapaCiudad mapa, float giroOrbita) {
+    /**
+     * @param giroOrbita -1, 0 o +1 segun Q/E (solo afecta a la panoramica)
+     * @param conChata   con la chata enganchada la tercera persona se aleja y sube
+     *                   para que el auto y la chata se vean completos
+     */
+    public void actualizar(float deltaTime, Auto auto, MapaCiudad mapa, float giroOrbita, boolean conChata) {
         orbita += giroOrbita * 0.8f * deltaTime;
+        float distancia = conChata ? 13.5f : 11;
+        float altura = conChata ? 7.0f : 5.5f;
         float[] ideal = new float[6]; // ojo XYZ y objetivo XYZ
         switch (modo) {
             case TERCERA_PERSONA -> {
-                ideal[0] = auto.x - auto.frenteX() * 11;
-                ideal[1] = 5.5f;
-                ideal[2] = auto.z - auto.frenteZ() * 11;
+                ideal[0] = auto.x - auto.frenteX() * distancia;
+                ideal[1] = altura;
+                ideal[2] = auto.z - auto.frenteZ() * distancia;
                 ideal[3] = auto.x + auto.frenteX() * 4;
                 ideal[4] = 1.0f;
                 ideal[5] = auto.z + auto.frenteZ() * 4;

@@ -82,10 +82,21 @@ public class Trafico {
     }
 
     public void actualizar(float deltaTime, Semaforos semaforos, Auto jugador) {
+        actualizar(deltaTime, semaforos, jugador, new float[0]);
+    }
+
+    /**
+     * @param obstaculosJugador puntos {x0, z0, x1, z1, ...} que tambien ocupa el jugador
+     *                          (los circulos de la chata): los autos autonomos frenan ante ellos
+     */
+    public void actualizar(float deltaTime, Semaforos semaforos, Auto jugador, float[] obstaculosJugador) {
         for (int i = 0; i < vehiculos.size(); i++) {
             VehiculoAutonomo v = vehiculos.get(i);
             float limite = limitePorSemaforo(v, semaforos);
             float porJugador = limitePorVehiculoDelante(v, jugador.x, jugador.z);
+            for (int k = 0; k + 1 < obstaculosJugador.length; k += 2) {
+                porJugador = Math.min(porJugador, limitePorVehiculoDelante(v, obstaculosJugador[k], obstaculosJugador[k + 1]));
+            }
             float porTrafico = Float.MAX_VALUE;
             ignorar[i] = Math.max(0, ignorar[i] - deltaTime);
             if (ignorar[i] == 0) {
@@ -145,7 +156,12 @@ public class Trafico {
 
     /** Colision del jugador con el trafico: no puede acercarse mas a un vehiculo que ya toca. */
     public boolean libre(float xAntes, float zAntes, float x, float z) {
-        float minimo = RADIO * 2 * 0.9f;
+        return libre(xAntes, zAntes, x, z, RADIO);
+    }
+
+    /** Igual que libre(), para un circulo de otro radio (por ejemplo, la chata). */
+    public boolean libre(float xAntes, float zAntes, float x, float z, float radio) {
+        float minimo = (RADIO + radio) * 0.9f;
         for (VehiculoAutonomo v : vehiculos) {
             float ahora = (float) Math.hypot(x - v.x, z - v.z);
             float antes = (float) Math.hypot(xAntes - v.x, zAntes - v.z);

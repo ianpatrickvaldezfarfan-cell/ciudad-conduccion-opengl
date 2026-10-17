@@ -2,7 +2,7 @@ package com.graphics.juego.funciones;
 
 /**
  * Contenido de la interfaz superpuesta: panel de estado (velocidad, luces, camara,
- * sector, entrega), ayuda de controles (H), menu de pausa (P), aviso de entrega,
+ * sector, chata, entrega), ayuda de controles (H), menu de pausa (P), aviso de entrega,
  * pantalla de victoria y rotulos del minimapa.
  */
 public class PanelHud {
@@ -12,7 +12,7 @@ public class PanelHud {
             int kmh, float fraccionVelocidad, boolean faros, boolean noche, String camara, String sector,
             int completadas, int total, String destino, int distancia, String rumbo, float tiempo,
             boolean terminado, boolean avisoEntrega, boolean minimapa, int[] recuadroMinimapa,
-            int vehiculosAutonomos) {
+            int vehiculosAutonomos, boolean chata, boolean avisoSinEspacio) {
     }
 
     private static final String[][] CONTROLES = {
@@ -25,6 +25,7 @@ public class PanelHud {
             { "N", "DIA / NOCHE" },
             { "F", "FAROS ON / OFF" },
             { "M", "MOSTRAR / OCULTAR MAPA" },
+            { "T", "ENGANCHAR / SOLTAR CHATA" },
             { "R", "REINICIAR RECORRIDO" },
             { "H", "MOSTRAR / OCULTAR AYUDA" },
             { "P", "PAUSA" },
@@ -54,6 +55,9 @@ public class PanelHud {
         if (d.avisoEntrega() && !d.terminado()) {
             centrado(hud, ancho, alto * 0.22f, e * 2, "ENTREGA COMPLETADA!", 0.3f, 1, 0.4f, true);
         }
+        if (d.avisoSinEspacio()) {
+            centrado(hud, ancho, alto * 0.30f, e, "NO HAY ESPACIO PARA ENGANCHAR LA CHATA AQUI", 1, 0.6f, 0.3f, true);
+        }
         if (d.terminado()) {
             victoria(hud, ancho, alto, e, d);
         }
@@ -74,6 +78,7 @@ public class PanelHud {
                 "VELOCIDAD: " + d.kmh() + " KM/H",
                 "FAROS: " + (d.faros() ? "ENCENDIDOS" : "APAGADOS") + "   " + (d.noche() ? "NOCHE" : "DIA"),
                 "CAMARA: " + d.camara(),
+                "CHATA: " + (d.chata() ? "SI" : "NO") + "   (T)",
                 "SECTOR: " + d.sector(),
                 d.terminado() ? "ENTREGAS: " + d.total() + "/" + d.total() + " COMPLETAS"
                         : "ENTREGA " + (d.completadas() + 1) + "/" + d.total() + ": " + d.destino(),
@@ -97,7 +102,7 @@ public class PanelHud {
         float ty = y + relleno;
         for (int i = 0; i < lineas.length; i++) {
             float[] c = i == 0 ? new float[] { 1, 1, 1 }
-                    : i == 4 ? new float[] { 1, 0.82f, 0.30f } : new float[] { 0.82f, 0.88f, 0.95f };
+                    : i == 5 ? new float[] { 1, 0.82f, 0.30f } : new float[] { 0.82f, 0.88f, 0.95f };
             hud.texto(x + relleno, ty, e, lineas[i], c[0], c[1], c[2]);
             ty += renglon;
             if (i == 0) {
